@@ -930,12 +930,16 @@ ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_mul_mv_mma_auto(
 }
 
 ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_mul_mv_mma(ggml_metal_library_t lib, const ggml_tensor * op, int nsg, int nt, int rt, bool add) {
+
+
+ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_mul_mm_sk(ggml_metal_library_t lib, const ggml_tensor * op) {
     char base[256];
     char name[256];
 
     const ggml_type tsrc0 = op->src[0]->type;
     const ggml_type tsrc1 = op->src[1]->type;
 
+<<<<<<< HEAD
     // MUL_MAT_ID takes the expert matrix from the token list, not from the batch dims
     const bool is_id = op->op == GGML_OP_MUL_MAT_ID;
 
@@ -951,28 +955,118 @@ ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_mul_mv_mma(ggml_
 
     snprintf(base, 256, "kernel_mul_mv_mma_%s%s_%s_nt%d_rt%d", is_id ? "id_" : "", ggml_type_name(tsrc0), ggml_type_name(tsrc1), nt, rt);
     snprintf(name, 256, "%s_nsg=%d_ne12=%d_r2=%d_r3=%d_ne00=%d_add=%d", base, nsg, ne12, r2, r3, ne00, add);
+=======
+    const bool bc_inp = op->src[0]->ne[0] % 32 != 0;
+    const bool bc_out = op->ne[0] % 32 != 0 || op->ne[1] % 16 != 0;
+
+    GGML_ASSERT(op->src[1]->ne[2] <= INT16_MAX && op->src[1]->ne[3] <= INT16_MAX);
+    const int16_t ne12 = (int16_t) op->src[1]->ne[2];
+    const int16_t ne13 = (int16_t) op->src[1]->ne[3];
+    const int16_t r2   = (int16_t) (ne12 / op->src[0]->ne[2]);
+    const int16_t r3   = (int16_t) (ne13 / op->src[0]->ne[3]);
+
+    snprintf(base, 256, "kernel_mul_mm_sk_%s_%s", ggml_type_name(tsrc0), ggml_type_name(tsrc1));
+    snprintf(name, 256, "%s_bci=%d_bco=%d_ne12=%d_ne13=%d_r2=%d_r3=%d",
+             base, bc_inp, bc_out, ne12, ne13, r2, r3);
+>>>>>>> 963069426 (metal: skinny-batch mul_mm tiles + deterministic split-K for spec-decode batch sizes (#75))
 
     ggml_metal_pipeline_with_params res = ggml_metal_library_get_pipeline(lib, name);
     if (!res.pipeline) {
         ggml_metal_cv_t cv = ggml_metal_cv_init();
 
+<<<<<<< HEAD
         ggml_metal_cv_set_int32(cv, ne00,           FC_MUL_MV_MMA + 4);
         ggml_metal_cv_set_int16(cv, nsg,            FC_MUL_MV_MMA + 0);
         ggml_metal_cv_set_int16(cv, (int16_t) ne12, FC_MUL_MV_MMA + 1);
         ggml_metal_cv_set_int16(cv, (int16_t) r2,   FC_MUL_MV_MMA + 2);
         ggml_metal_cv_set_int16(cv, (int16_t) r3,   FC_MUL_MV_MMA + 3);
         ggml_metal_cv_set_bool (cv, add,            FC_MUL_MV_MMA + 5);
+=======
+        ggml_metal_cv_set_bool(cv, bc_inp, FC_MUL_MM + 0);
+        ggml_metal_cv_set_bool(cv, bc_out, FC_MUL_MM + 1);
+        ggml_metal_cv_set_int16(cv, ne12,  FC_MUL_MM + 2);
+        ggml_metal_cv_set_int16(cv, ne13,  FC_MUL_MM + 3);
+        ggml_metal_cv_set_int16(cv, r2,    FC_MUL_MM + 4);
+        ggml_metal_cv_set_int16(cv, r3,    FC_MUL_MM + 5);
+>>>>>>> 963069426 (metal: skinny-batch mul_mm tiles + deterministic split-K for spec-decode batch sizes (#75))
 
         res = ggml_metal_library_compile_pipeline(lib, base, name, cv);
 
         ggml_metal_cv_free(cv);
     }
 
+<<<<<<< HEAD
     res.nsg  = nsg;
     res.smem = ggml_metal_mul_mv_mma_smem(nsg, nt, rt);
 
     res.nr0 = GGML_METAL_MMA_TILE*nt;
     res.nr1 = GGML_METAL_MMA_TILE*rt;
+=======
+    res.nr0  = 32;
+    res.nr1  = 16;
+    res.smem = 4096;
+    res.nsg  = 4;
+
+    return res;
+}
+
+ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_mul_mm_sk_reduce(ggml_metal_library_t lib) {
+    const char * name = "kernel_mul_mm_sk_reduce";
+
+    ggml_metal_pipeline_with_params res = ggml_metal_library_get_pipeline(lib, name);
+    if (!res.pipeline) {
+        ggml_metal_cv_t cv = ggml_metal_cv_init();
+        res = ggml_metal_library_compile_pipeline(lib, name, name, cv);
+        ggml_metal_cv_free(cv);
+    }
+
+    return res;
+}
+
+ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_mul_mm_s(ggml_metal_library_t lib, const ggml_tensor * op) {
+    char base[256];
+    char name[256];
+
+    const ggml_type tsrc0 = op->src[0]->type;
+    const ggml_type tsrc1 = op->src[1]->type;
+
+    // tile family: 32x16 (default) or 16x16 via GGML_METAL_MM_SKINNY_TILE=16
+    static const int tile0 = getenv("GGML_METAL_MM_SKINNY_TILE") && atoi(getenv("GGML_METAL_MM_SKINNY_TILE")) == 16 ? 16 : 32;
+
+    const bool bc_inp = op->src[0]->ne[0] % 32 != 0;
+    const bool bc_out = op->ne[0] % tile0 != 0 || op->ne[1] % 16 != 0;
+
+    GGML_ASSERT(op->src[1]->ne[2] <= INT16_MAX && op->src[1]->ne[3] <= INT16_MAX);
+    const int16_t ne12 = (int16_t) op->src[1]->ne[2];
+    const int16_t ne13 = (int16_t) op->src[1]->ne[3];
+    const int16_t r2   = (int16_t) (ne12 / op->src[0]->ne[2]);
+    const int16_t r3   = (int16_t) (ne13 / op->src[0]->ne[3]);
+
+    snprintf(base, 256, "kernel_mul_mm_s%s_%s_%s", tile0 == 16 ? "2" : "", ggml_type_name(tsrc0), ggml_type_name(tsrc1));
+    snprintf(name, 256, "%s_bci=%d_bco=%d_ne12=%d_ne13=%d_r2=%d_r3=%d",
+             base, bc_inp, bc_out, ne12, ne13, r2, r3);
+
+    ggml_metal_pipeline_with_params res = ggml_metal_library_get_pipeline(lib, name);
+    if (!res.pipeline) {
+        ggml_metal_cv_t cv = ggml_metal_cv_init();
+
+        ggml_metal_cv_set_bool(cv, bc_inp, FC_MUL_MM + 0);
+        ggml_metal_cv_set_bool(cv, bc_out, FC_MUL_MM + 1);
+        ggml_metal_cv_set_int16(cv, ne12,  FC_MUL_MM + 2);
+        ggml_metal_cv_set_int16(cv, ne13,  FC_MUL_MM + 3);
+        ggml_metal_cv_set_int16(cv, r2,    FC_MUL_MM + 4);
+        ggml_metal_cv_set_int16(cv, r3,    FC_MUL_MM + 5);
+
+        res = ggml_metal_library_compile_pipeline(lib, base, name, cv);
+
+        ggml_metal_cv_free(cv);
+    }
+
+    res.nr0  = tile0;
+    res.nr1  = 16;
+    res.smem = 4096;
+    res.nsg  = 4;
+>>>>>>> 963069426 (metal: skinny-batch mul_mm tiles + deterministic split-K for spec-decode batch sizes (#75))
 
     return res;
 }
