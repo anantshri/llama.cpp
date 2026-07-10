@@ -398,6 +398,20 @@ typedef struct {
     uint64_t nb21;      // V source strides (ne23 = 1)
     uint64_t nb22;
 } ggml_metal_kargs_flash_attn_ext_rows;
+    int32_t  ne10;
+    int32_t  ne11;
+    int32_t  ne12;
+    int32_t  ne13;
+    uint64_t nb10;
+    uint64_t nb11;
+    uint64_t nb12;
+    uint64_t nb13;
+    uint64_t nb20;
+    uint64_t nb21;
+    uint64_t nb22;
+    uint64_t nb23;
+    int32_t  nblocks;
+} ggml_metal_kargs_flash_attn_ext_q8_0_to_f16;
 
 typedef struct {
     int32_t  ne11;

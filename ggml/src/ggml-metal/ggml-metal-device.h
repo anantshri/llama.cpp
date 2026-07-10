@@ -191,6 +191,8 @@ struct ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_flash_att
 struct ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_flash_attn_ext_kv_f16(
         ggml_metal_library_t lib,
         const struct ggml_tensor * op);
+struct ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_flash_attn_ext_q8_0_to_f16(
+        ggml_metal_library_t lib);
 
 struct ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_flash_attn_ext_blk(
         ggml_metal_library_t lib,
@@ -242,10 +244,15 @@ struct ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_flash_att
         int32_t ne,
         int32_t nsg,
         int32_t nwg,
+<<<<<<< HEAD
         bool    use_kv_f16,
         int32_t ns10,
         int32_t ns20,
         bool    gqa);
+=======
+        int32_t nhptg,
+        bool    use_f16_kv);
+>>>>>>> 9cde680b0 (metal: materialize q8_0 KV for high-GQA decode)
 
 struct ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_flash_attn_ext_vec_reduce(
         ggml_metal_library_t lib,

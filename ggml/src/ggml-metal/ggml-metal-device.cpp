@@ -1849,6 +1849,9 @@ ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_flash_attn_ext_k
     char base[256];
 
     snprintf(base, 256, "kernel_flash_attn_ext_kv_%s_f16", ggml_type_name(op->src[1]->type));
+ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_flash_attn_ext_q8_0_to_f16(
+        ggml_metal_library_t lib) {
+    const char * base = "kernel_flash_attn_ext_q8_0_to_f16";
 
     ggml_metal_pipeline_with_params res = ggml_metal_library_get_pipeline(lib, base);
     if (!res.pipeline) {
@@ -2059,10 +2062,15 @@ ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_flash_attn_ext_v
         int32_t ne,
         int32_t nsg,
         int32_t nwg,
+<<<<<<< HEAD
         bool    use_kv_f16,
         int32_t ns10,
         int32_t ns20,
         bool    gqa) {
+=======
+        int32_t nhptg,
+        bool    use_f16_kv) {
+>>>>>>> 9cde680b0 (metal: materialize q8_0 KV for high-GQA decode)
     assert(op->op == GGML_OP_FLASH_ATTN_EXT);
 
     char base[256];
@@ -2071,6 +2079,7 @@ ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_flash_attn_ext_v
     const int32_t dk = (int32_t) op->src[1]->ne[0];
     const int32_t dv = (int32_t) op->src[2]->ne[0];
 
+<<<<<<< HEAD
     const char * type = use_kv_f16 ? "f16" : ggml_type_name(op->src[1]->type);
 
     char qne_suffix[16] = {0};
@@ -2080,6 +2089,16 @@ ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_flash_attn_ext_v
 
     snprintf(base, 256, "kernel_%s_%s_dk%d_dv%d%s",
             "flash_attn_ext_vec",
+=======
+    const int32_t ns10 = use_f16_kv ? dk : op->src[1]->nb[1]/op->src[1]->nb[0];
+    const int32_t ns20 = use_f16_kv ? dv : op->src[2]->nb[1]/op->src[2]->nb[0];
+
+    const char * kernel = nhptg == 2 ? "flash_attn_ext_vec_gqa2" : "flash_attn_ext_vec";
+    const char * type   = use_f16_kv ? "f16" : ggml_type_name(op->src[1]->type);
+
+    snprintf(base, 256, "kernel_%s_%s_dk%d_dv%d",
+            kernel,
+>>>>>>> 9cde680b0 (metal: materialize q8_0 KV for high-GQA decode)
             type,
             dk,
             dv,
