@@ -3537,17 +3537,21 @@ static size_t ggml_metal_op_flash_attn_ext_kv_f16_k_size(const ggml_tensor * op)
 
     return GGML_PAD(sizeof(ggml_fp16_t)*(size_t) ne10*ne11*ne12*ne13, 16);
 static bool ggml_metal_op_flash_attn_ext_use_q8_f16(const ggml_tensor * op) {
-    if (!ggml_metal_op_flash_attn_ext_use_vec(op) ||
-        op->src[1]->type != GGML_TYPE_Q8_0 ||
+    if (op->src[1]->type != GGML_TYPE_Q8_0 ||
         op->src[2]->type != GGML_TYPE_Q8_0) {
         return false;
     }
 
     const int64_t n_head    = op->src[0]->ne[2];
     const int64_t n_head_kv = op->src[1]->ne[2];
+    const int64_t n_query   = op->src[0]->ne[1];
+    const int64_t n_kv      = op->src[1]->ne[1];
+
+    const bool use_decode = n_query == 1;
+    const bool use_prompt = n_query >= 64;
 
     return op->src[0]->ne[0] == 256 && op->src[1]->ne[0] == 256 && op->src[2]->ne[0] == 256 &&
-        op->src[0]->ne[1] == 1 && op->src[1]->ne[1] >= 1024 &&
+        n_kv >= 1024 && (use_decode || use_prompt) &&
         op->src[1]->ne[1] == op->src[2]->ne[1] &&
         op->src[1]->ne[2] == op->src[2]->ne[2] &&
         op->src[1]->ne[3] == op->src[2]->ne[3] &&
@@ -3574,7 +3578,6 @@ size_t ggml_metal_op_flash_attn_ext_extra_pad(const ggml_tensor * op) {
     size_t res = 0;
 
     const bool has_mask = op->src[3] != nullptr;
-<<<<<<< HEAD
     const bool use_kv_f16 = ggml_metal_op_flash_attn_ext_use_kv_f16(op);
 
     // when the KV is dequantized to F16, the pad kernel copies the tail chunk from the F16 scratch buffer
@@ -3587,12 +3590,10 @@ size_t ggml_metal_op_flash_attn_ext_extra_pad(const ggml_tensor * op) {
         nb11_pad = sizeof(ggml_fp16_t)*ne10;
         nb21_pad = sizeof(ggml_fp16_t)*(v_is_view_of_k ? ne10 : ne20);
     }
-=======
     const bool use_q8_f16 = ggml_metal_op_flash_attn_ext_use_q8_f16(op);
 
     const uint64_t nb11_pad = use_q8_f16 ? sizeof(ggml_fp16_t)*ne10 : nb11;
     const uint64_t nb21_pad = use_q8_f16 ? sizeof(ggml_fp16_t)*ne20 : nb21;
->>>>>>> 9cde680b0 (metal: materialize q8_0 KV for high-GQA decode)
 
     // note: the non-vec kernel requires more extra memory, so always reserve for it
     GGML_ASSERT(OP_FLASH_ATTN_EXT_NCPSG >= OP_FLASH_ATTN_EXT_VEC_NCPSG);
@@ -4180,6 +4181,72 @@ int ggml_metal_op_flash_attn_ext(ggml_metal_op_t ctx, int idx) {
     ggml_metal_buffer_id bid_q8_f16 = bid_tmp;
     bid_q8_f16.offs += ggml_metal_op_flash_attn_ext_extra_tmp(op);
 
+    const bool use_q8_f16 = ggml_metal_op_flash_attn_ext_use_q8_f16(op);
+
+    ggml_metal_buffer_id bid_k = bid_src1;
+    ggml_metal_buffer_id bid_v = bid_src2;
+
+    uint64_t nb10_attn = nb10;
+    uint64_t nb11_attn = nb11;
+    uint64_t nb12_attn = nb12;
+    uint64_t nb13_attn = nb13;
+    uint64_t nb20_attn = nb20;
+    uint64_t nb21_attn = nb21;
+    uint64_t nb22_attn = nb22;
+    uint64_t nb23_attn = nb23;
+
+    if (use_q8_f16) {
+        assert(ggml_metal_op_flash_attn_ext_extra_q8_f16(op) != 0);
+
+        const int64_t nblocks64 = (ne10/ggml_blck_size(GGML_TYPE_Q8_0))*(int64_t) ne11*ne12*ne13;
+        GGML_ASSERT(nblocks64 <= INT32_MAX/2);
+        const int32_t nblocks = nblocks64;
+
+        ggml_metal_buffer_id bid_v_f16 = bid_q8_f16;
+        bid_v_f16.offs += ggml_metal_op_flash_attn_ext_q8_f16_k_size(op);
+
+        ggml_metal_kargs_flash_attn_ext_q8_0_to_f16 args0 = {
+            /*.ne10    =*/ ne10,
+            /*.ne11    =*/ ne11,
+            /*.ne12    =*/ ne12,
+            /*.ne13    =*/ ne13,
+            /*.nb10    =*/ nb10,
+            /*.nb11    =*/ nb11,
+            /*.nb12    =*/ nb12,
+            /*.nb13    =*/ nb13,
+            /*.nb20    =*/ nb20,
+            /*.nb21    =*/ nb21,
+            /*.nb22    =*/ nb22,
+            /*.nb23    =*/ nb23,
+            /*.nblocks =*/ nblocks,
+        };
+
+        auto pipeline0 = ggml_metal_library_get_pipeline_flash_attn_ext_q8_0_to_f16(lib);
+        const int nth = std::min(ggml_metal_pipeline_max_theads_per_threadgroup(pipeline0), 256);
+
+        ggml_metal_encoder_set_pipeline(enc, pipeline0);
+        ggml_metal_encoder_set_bytes   (enc, &args0, sizeof(args0), 0);
+        ggml_metal_encoder_set_buffer  (enc, bid_src1,   1);
+        ggml_metal_encoder_set_buffer  (enc, bid_src2,   2);
+        ggml_metal_encoder_set_buffer  (enc, bid_q8_f16, 3);
+        ggml_metal_encoder_set_buffer  (enc, bid_v_f16,  4);
+
+        ggml_metal_encoder_dispatch_threadgroups(enc, (2*nblocks + nth - 1)/nth, 1, 1, nth, 1, 1);
+        ggml_metal_op_concurrency_reset(ctx);
+
+        bid_k = bid_q8_f16;
+        bid_v = bid_v_f16;
+
+        nb10_attn = sizeof(ggml_fp16_t);
+        nb11_attn = nb10_attn*ne10;
+        nb12_attn = nb11_attn*ne11;
+        nb13_attn = nb12_attn*ne12;
+        nb20_attn = sizeof(ggml_fp16_t);
+        nb21_attn = nb20_attn*ne20;
+        nb22_attn = nb21_attn*ne21;
+        nb23_attn = nb22_attn*ne22;
+    }
+
     if (!ggml_metal_op_flash_attn_ext_use_vec(op)) {
 >>>>>>> 9cde680b0 (metal: materialize q8_0 KV for high-GQA decode)
         // half8x8 kernel
@@ -4268,7 +4335,11 @@ int ggml_metal_op_flash_attn_ext(ggml_metal_op_t ctx, int idx) {
             ggml_metal_op_concurrency_reset(ctx);
         }
 
+<<<<<<< HEAD
         const int is_q = !use_kv_f16 && ggml_is_quantized(op->src[1]->type) ? 1 : 0;
+=======
+        const int is_q = !use_q8_f16 && ggml_is_quantized(op->src[1]->type) ? 1 : 0;
+>>>>>>> 793f14170 (metal: materialize q8_0 KV for deep prompts)
 
         // shared memory layout (halfs unless noted):
         //   queries/attn/result: Q*(DK + 2*PAD2(DV,64) + 4*C)
@@ -4302,12 +4373,21 @@ int ggml_metal_op_flash_attn_ext(ggml_metal_op_t ctx, int idx) {
             /*.nb03          =*/ nb03,
             /*.ne11          =*/ (int32_t) ne11_attn,
             /*.ne_12_2       =*/ ne12,
+<<<<<<< HEAD
             /*.ne_12_3       =*/ has_rows ? ne03 : ne13, // the gathered K/V holds one copy per stream
             /*.ns10          =*/ ns10,
             /*.nb11          =*/ nb11_attn,
             /*.nb12          =*/ nb12_attn,
             /*.nb13          =*/ nb13_attn,
             /*.ns20          =*/ ns20,
+=======
+            /*.ne_12_3       =*/ ne13,
+            /*.ns10          =*/ int32_t(nb11_attn/nb10_attn),
+            /*.nb11          =*/ nb11_attn,
+            /*.nb12          =*/ nb12_attn,
+            /*.nb13          =*/ nb13_attn,
+            /*.ns20          =*/ int32_t(nb21_attn/nb20_attn),
+>>>>>>> 793f14170 (metal: materialize q8_0 KV for deep prompts)
             /*.nb21          =*/ nb21_attn,
             /*.nb22          =*/ nb22_attn,
             /*.nb23          =*/ nb23_attn,
@@ -4328,7 +4408,12 @@ int ggml_metal_op_flash_attn_ext(ggml_metal_op_t ctx, int idx) {
             /*.logit_softcap =*/ logit_softcap,
         };
 
+<<<<<<< HEAD
         auto pipeline = ggml_metal_library_get_pipeline_flash_attn_ext(lib, op, has_mask, has_sinks, has_bias, has_scap, has_kvpad, nsg, nqptg, use_kv_f16, ns10, ns20);
+=======
+        auto pipeline = ggml_metal_library_get_pipeline_flash_attn_ext(
+            lib, op, has_mask, has_sinks, has_bias, has_scap, has_kvpad, nsg, use_q8_f16);
+>>>>>>> 793f14170 (metal: materialize q8_0 KV for deep prompts)
 
         ggml_metal_encoder_set_pipeline(enc, pipeline);
         ggml_metal_encoder_set_bytes   (enc, &args, sizeof(args), 0);
@@ -4362,7 +4447,6 @@ int ggml_metal_op_flash_attn_ext(ggml_metal_op_t ctx, int idx) {
         const int ncpsg = OP_FLASH_ATTN_EXT_VEC_NCPSG; // cache values per simdgroup !! sync with kernel template arguments !!
 
         const int64_t gqa_ratio = ne02/ne12;
-        const bool use_q8_f16 = ggml_metal_op_flash_attn_ext_use_q8_f16(op);
         const bool use_gqa2 =
             !use_q8_f16 &&
             op->src[1]->type == GGML_TYPE_Q8_0 &&
@@ -4379,6 +4463,7 @@ int ggml_metal_op_flash_attn_ext(ggml_metal_op_t ctx, int idx) {
 
         bool need_sync = false;
 
+<<<<<<< HEAD
 <<<<<<< HEAD
         const bool has_kvpad = !use_sparse && ne11_attn % ncpsg != 0;
 
@@ -4478,6 +4563,8 @@ int ggml_metal_op_flash_attn_ext(ggml_metal_op_t ctx, int idx) {
             nb23_attn = nb22_attn*ne22;
         }
 
+=======
+>>>>>>> 793f14170 (metal: materialize q8_0 KV for deep prompts)
         const bool has_kvpad = ne11 % ncpsg != 0;
 >>>>>>> 9cde680b0 (metal: materialize q8_0 KV for high-GQA decode)
 
