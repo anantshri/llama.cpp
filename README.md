@@ -25,7 +25,9 @@
 > tag: + oneDNN build enablement & strict CMake gating + this README).
 > Based on upstream 0.4.1 (`7cf1c54a9`). Developed and measured on an
 > **Intel Arc Pro B70 32 GB** with oneAPI 2026.1 (`icpx`) and oneDNN
-> 2026.0.2. Everything below this section is the upstream README, unchanged.
+> 2026.0.2. Fork-specific content below runs down to the *End of fork
+> additions* marker; everything after that marker is the upstream README,
+> unchanged.
 
 ## What is different here
 
@@ -128,6 +130,10 @@ throughput now holds with depth).
   r3 medians, F16 KV unless noted. Your mileage will vary with quant, ubatch
   and prompt depth — the gain scales with the softmax/attention share of the
   prefill wall.
+
+---
+
+*End of fork additions — everything below is the upstream README, unchanged.*
 
 ---
 
