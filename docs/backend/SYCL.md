@@ -52,10 +52,6 @@ The packages for FP32 and FP16 would have different accuracy and performance on 
 
 ## News
 
-- 2026.09
-  - Update the CI build environment for oneAPI 2026.1 (unified oneAPI Toolkit). oneDNN is removed from the Deep Learning Essentials package in 2026.0, so the CI now uses the oneAPI Toolkit installer which still includes oneDNN.
-  - oneAPI 2026.1 improves the SYCL build performance: measured with the same code on Arc B570, prompt processing 1331 vs 434 t/s (3.1x) vs the 2025.3-based release build.
-
 - 2026.04-05
   - Optimize mul_mat by reorder feature for data type: Q4_K, Q5_K, Q6_K, Q8_0.
   - Fused MoE.
@@ -261,7 +257,7 @@ Platform #0: Intel(R) OpenCL HD Graphics
  `-- Device #0: Intel(R) Iris(R) Xe Graphics [0x9a49]
 ```
 
-2. **Install Intel® oneAPI Toolkit**
+2. **Install Intel® oneAPI Base toolkit**
 
 SYCL backend depends on:
   - Intel® oneAPI DPC++/C++ compiler/running-time.
@@ -271,11 +267,11 @@ SYCL backend depends on:
 
 - **For Intel GPU**
 
-With the 2026.0 release, the Intel® oneAPI Base toolkit and the HPC toolkit are combined into the **Intel® oneAPI Toolkit**, and **oneDNN is removed from the Intel® Deep Learning Essentials** package (oneDNN is distributed separately since then). The **Intel® oneAPI Toolkit** includes oneDNN until 2027.0.
+All above are included in both **Intel® oneAPI Base toolkit** and **Intel® Deep Learning Essentials** packages.
 
-It's recommended to install the **Intel® oneAPI Toolkit**.
+It's recommended to install **Intel® Deep Learning Essentials** which only provides the necessary libraries with less size.
 
-The **Intel® oneAPI Toolkit** can be obtained from the official [Intel® oneAPI Toolkit](https://www.intel.com/content/www/us/en/developer/tools/oneapi/base-toolkit-download.html) page.
+The **Intel® oneAPI Base toolkit** and **Intel® Deep Learning Essentials** can be obtained from the official [Intel® oneAPI Base Toolkit](https://www.intel.com/content/www/us/en/developer/tools/oneapi/base-toolkit.html) page.
 
 Please follow the instructions for downloading and installing the Toolkit for Linux, and preferably keep the default installation values unchanged, notably the installation path *(`/opt/intel/oneapi` by default)*.
 
@@ -285,7 +281,6 @@ Upon a successful installation, SYCL is enabled for the available Intel devices,
 
 |Verified release|
 |-|
-|2026.1 |
 |2025.3.3 |
 |2025.2.1|
 |2025.1|
@@ -817,9 +812,9 @@ User can use the device management in [docs/multi-gpu.md](https://github.com/ggm
 | GGML_SYCL_MKL_FA_DIAG | 0 (default) or 1 | Enable output fingerprinting for MKL flash attention. Dumps the first 64 float output values for the first 6 FA calls with n_kv ≥ 1024, labeled with kernel type (MKL/TILE/VEC) for cross-kernel comparison. |
 | GGML_SYCL_ENABLE_FUSION | 0 or 1 (default) | Enable fused-kernel dispatch in graph compute. Unsupported types and layouts fall back to the standalone op kernels. See `ggml_sycl_can_fuse()`. |
 | GGML_SYCL_ENABLE_ESIMD | 0 or 1 (default)| Enable ESIMD kernels when available. |
-| GGML_SYCL_MMVQ_WIDE | 0 or 1 (default) | Use the wide-load variant of the reordered Q8_0 mat-vec kernel, which reads four contiguous dwords per operand instead of one value at a time. Set to 0 to fall back to the per-value loads. Only affects Q8_0 weights in the reordered layout. |
-| GGML_SYCL_XMX_GATHER_TYPES | decimal bitmask, all bits set (default) | Select which quantized weight formats may take the XMX dequant-GEMM paths, where the weights are dequantized inside the GEMM (gathered straight into the XMX tiles) instead of being written out to f16 and read back. This covers the grouped `MUL_MAT_ID` path used by MoE models, and the plain `MUL_MAT` path when built with `GGML_SYCL_F16=ON` (the plain path sits inside that build's f16 branch). Both compute in f16 on the XMX units regardless of `GGML_SYCL_F16`, so enabling them for `MUL_MAT_ID` trades some precision for speed relative to the per-expert library GEMM they replace. Mainly affects prompt processing; token generation is unaffected. One bit per format, so a format can be enabled or benchmarked on its own:<br>* 1: IQ4_NL<br>* 2: IQ3_S<br>* 4: IQ4_XS<br>* 8: IQ3_XXS<br>* 16: IQ2_XXS<br>* 32: IQ2_XS<br>* 64: IQ2_S<br>* 128: IQ1_S<br>* 256: IQ1_M<br>Set to 0 to disable the paths entirely and fall back to the library GEMM, which is the baseline to compare against. A format is only taken when the shape also fits (the weights must cover whole blocks, and the tile is only used while N is narrow), so setting a bit does not force the path. Formats outside this list are never affected by this variable. |
+| GGML_SYCL_XMX_GATHER_TYPES | decimal bitmask, all bits set (default) | Select which quantized weight formats may use the XMX dequant-GEMM paths. These paths dequantize the weights inside the matrix multiplication, straight into the XMX tiles, instead of writing them out as f16 and reading them back. They cover the grouped `MUL_MAT_ID` path used by MoE models, and the plain `MUL_MAT` path in builds with `GGML_SYCL_F16=ON`. Both compute in f16 on the XMX units.<br>**Who benefits:** Intel GPUs with XMX units (Arc A- and B-series, Arc Pro, Data Center GPU Max) running MoE models whose expert weights use one of the formats below, for example the IQ quants of Qwen3 MoE models. It speeds up prompt processing; token generation is unaffected. On an Arc Pro B60, Qwen3-30B-A3B UD-IQ3_XXS runs pp512 about 50% faster.<br>One bit per format; add the values to enable several:<br>* 1: IQ4_NL<br>* 2: IQ3_S<br>* 4: IQ4_XS<br>* 8: IQ3_XXS<br>* 16: IQ2_XXS<br>* 32: IQ2_XS<br>* 64: IQ2_S<br>* 128: IQ1_S<br>* 256: IQ1_M<br>For example, `GGML_SYCL_XMX_GATHER_TYPES=3` (1 + 2) enables only IQ4_NL and IQ3_S. `0` disables the paths and uses the library GEMM, which is the baseline to compare against.<br>**When the path is taken:** an enabled bit allows the path but does not force it. A matrix multiplication uses it only when all of these hold:<br>* the device offers an XMX matrix shape allowed by `GGML_SYCL_XMX_GATHER_SHAPES`<br>* the weight row length is a multiple of 256 (a multiple of 32 for IQ4_NL)<br>* the weights are contiguous, the output is F32, and no higher accumulator precision was requested (`MUL_MAT_ID` also needs contiguous F32 activations)<br>* `MUL_MAT`: the batch has at most 64 tokens<br>* `MUL_MAT_ID`: the active experts receive at most 64 tokens each on average<br>Otherwise the operation falls back to the library GEMM. Weight formats not listed here are never affected by this variable. |
 | GGML_SYCL_XMX_GATHER_SHAPES | decimal bitmask, all bits set (default) | Select which XMX `joint_matrix` shapes (A/B type, M x N x K, sub-group size) the XMX dequant-GEMM paths of `GGML_SYCL_XMX_GATHER_TYPES` may use. The shape is picked once per device, from the shapes the device reports in `matrix_combinations` and that this variable allows; the log line `fg_pick_shape` shows the choice. One bit per shape:<br>* 1: f16 8x16x16, sub-group 16 (Xe2, Xe3, Xe-HPC)<br>* 2: f16 16x16x16, sub-group 16 (Xe2, Xe3, Xe-HPC)<br>* 4: f16 32x64x16, sub-group 16 (Xe2, Xe3, Xe-HPC)<br>* 8: f16 32x64x32, sub-group 16 (Xe2, Xe3, Xe-HPC)<br>* 16: f16 8x8x16, sub-group 8 (Xe-HPG such as Arc A770, ARL-H)<br>* 32: tf32 8x16x8, sub-group 16 (Xe2, Xe3, Xe-HPC), f32 data rounded to tf32<br>Preference order: 2, 1, 16, 32, 8, 4. The 32x64 shapes spill registers and are much slower, so they are only taken when set alone. Set a single bit to force a shape for testing, or clear a bit to exclude a shape that misbehaves on a device. If no allowed shape is available, the paths are off. An AOT build with `GGML_SYCL_DEVICE_ARCH` compiles only the shapes whose sub-group size fits that target. |
+| GGML_SYCL_MMVQ_WIDE | 0 or 1 (default) | Use the wide-load variant of the reordered Q8_0 mat-vec kernel, which reads four contiguous dwords per operand instead of one value at a time. Set to 0 to fall back to the per-value loads. Only affects Q8_0 weights in the reordered layout. |
 | GGML_SYCL_SPARSE_FA | 0 (default) or 1 | Enable Sparse Flash-attention.|
 | GGML_SYCL_SPARSE_FA_DEBUG | 0 (default) or 1 | Enable to debug for Sparse Flash-attention.|
 | GGML_SYCL_SPARSE_FA_MARGIN | [0,..] default:256 | Set the margin value for Sparse Flash-attention.|
