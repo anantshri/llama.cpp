@@ -17,6 +17,39 @@
 
 </div>
 
+## Fork integration: B70 SYCL, Intel Vulkan, and shared fixes
+
+`sycl-b70-combined-20261001` retains upstream `ggml-org/llama.cpp` master
+through its October 1 merge and carries the changes below. The upstream merge
+is a snapshot, not a claim that this fork will automatically track later
+upstream commits. Only the SYCL and Intel Vulkan changes target the Arc Pro
+B70; CUDA and Metal use their own backends from the same source tree.
+
+| Source | Code on this branch (inherited or fork-only) | Reason for inclusion |
+| --- | --- | --- |
+| [#28918](https://github.com/ggml-org/llama.cpp/pull/28918) | Coalesce oneMKL flash-attention softmax loads on SYCL rather than assigning one work-item per row. | Reduce B70 attention costs; already merged into upstream master before this fork's October merge. |
+| [#28931](https://github.com/ggml-org/llama.cpp/pull/28931) | Extend MMVQ GLU fusion to mixed quants and fuse RMS norm with scale and SSM_CONV with SILU on SYCL. | Cut decoder kernel launches; already merged into upstream master before this fork's October merge. |
+| [#29107](https://github.com/ggml-org/llama.cpp/pull/29107) | Reorder IQ3_S/IQ3_XXS weights and use reordered SYCL mat-vec and dequant paths. | Improve B70 IQ3 decode; the combined branch carried this before the October merge. |
+| [#29171](https://github.com/ggml-org/llama.cpp/pull/29171) | Add SYCL oneMKL flash-attention dispatch for GLM MLA. The separate F16 QK-score storage commit is **reverted**: MKL scores remain F32. | Enable GLM MLA without the demonstrated F16 score-overflow case. |
+| [#29186](https://github.com/ggml-org/llama.cpp/pull/29186) | Add reordered Q8_0 wide-load MMVQ and ESIMD DMMV paths in `ggml-sycl`. | On B70, measured Q8_0 decode gains on Qwythos; other weight types are not the target. |
+| [#29245](https://github.com/ggml-org/llama.cpp/pull/29245) | Add grouped MoE XMX dequant-GEMM for selected IQ weight types, plus later per-device matrix-shape and type-selection updates. | Group narrow expert GEMMs instead of launching one library GEMM per expert. B70 GSQ-RCO Coder pp8192 rose from about 462 to 764 tok/s with `GGML_SYCL_XMX_GATHER_TYPES=73` (IQ4_NL + IQ3_XXS + IQ2_S). The path uses F16 expert math; this is not a quality-parity claim. |
+| [#29375](https://github.com/ggml-org/llama.cpp/pull/29375) | Add multi-column Q5_K SYCL MMVQ handling in `mmvq.cpp` and `vecdotq.hpp`. | Reduce the measured Q5_K n=4 kernel latency; server-side MTP gains remain unverified. |
+| [#29608](https://github.com/ggml-org/llama.cpp/pull/29608) | Stage model-weight uploads through a reusable pinned-memory ring. | Reduce warm-cache model load wall time; it does not increase steady-state prompt throughput. |
+| [#29338](https://github.com/ggml-org/llama.cpp/pull/29338) | Guard DMMV reads beyond the row tail and add reuse cases to `test-backend-ops`. | Correct an out-of-bounds read on short rows. |
+| [#29357](https://github.com/ggml-org/llama.cpp/pull/29357) | Add Intel Vulkan flash-attention prefill shader and dispatch. | Improve B70 Vulkan prefill by about 25% at pp8192 in the measured models; near-full-context Qwen decode timed out and is not validated. |
+| [#29751](https://github.com/ggml-org/llama.cpp/pull/29751) | Route Qwen4Exp QSA through the shared indexer k-pool, including sequence-order pools and image-position handling. | Correct Qwen3.8 Flash-Next pooled-attention semantics on the newer upstream base. On B70, a single paired GSQ-RCO Coder tg32 check at depth 32768 improved 20.45 to 22.09 tok/s; short-corpus perplexity differences were within control drift. |
+| [#29755](https://github.com/ggml-org/llama.cpp/pull/29755) | Bound grammar parser nesting at 256 levels and test the failure path. | Reject deeply nested client grammars instead of exhausting the server stack; parser test passed on the B70 host. |
+
+#28918 and #28931 were inherited from upstream master, not cherry-picked
+into the October fork; the other rows are the fork's selected deltas.
+
+These changes are not a blanket production recommendation. On SYCL,
+`GGML_SYCL_XMX_GATHER_TYPES=0` disables the precision-changing grouped path
+for a control or quality-sensitive deployment. The F32 QK-score reversal is
+independent of that flag. Validate model output and memory headroom before
+changing a serving binary; in particular, the combined upstream and PR tree
+has not been qualified on CUDA or Metal by these B70 benchmarks.
+
 ## Quick start
 
 A few options to get `llama.cpp` installed on your machine:
