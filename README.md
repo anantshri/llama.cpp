@@ -20,8 +20,8 @@
 ## Fork integration: B70 SYCL, Intel Vulkan, and shared fixes
 
 `sycl-b70-combined-20261001` retains upstream `ggml-org/llama.cpp` master
-through its October 1 merge and carries the changes below. The upstream merge
-is a snapshot, not a claim that this fork will automatically track later
+through its October 1 and October 4 merges and carries the changes below. The upstream
+merges are snapshots, not a claim that this fork will automatically track later
 upstream commits. Only the SYCL and Intel Vulkan changes target the Arc Pro
 B70; CUDA and Metal use their own backends from the same source tree.
 
@@ -31,17 +31,25 @@ B70; CUDA and Metal use their own backends from the same source tree.
 | [#28931](https://github.com/ggml-org/llama.cpp/pull/28931) | Extend MMVQ GLU fusion to mixed quants and fuse RMS norm with scale and SSM_CONV with SILU on SYCL. | Cut decoder kernel launches; already merged into upstream master before this fork's October merge. |
 | [#29107](https://github.com/ggml-org/llama.cpp/pull/29107) | Reorder IQ3_S/IQ3_XXS weights and use reordered SYCL mat-vec and dequant paths. | Improve B70 IQ3 decode; the combined branch carried this before the October merge. |
 | [#29171](https://github.com/ggml-org/llama.cpp/pull/29171) | Add SYCL oneMKL flash-attention dispatch for GLM MLA. The separate F16 QK-score storage commit is **reverted**: MKL scores remain F32. | Enable GLM MLA without the demonstrated F16 score-overflow case. |
-| [#29186](https://github.com/ggml-org/llama.cpp/pull/29186) | Add reordered Q8_0 wide-load MMVQ and ESIMD DMMV paths in `ggml-sycl`. | On B70, measured Q8_0 decode gains on Qwythos; other weight types are not the target. |
+| [#29186](https://github.com/ggml-org/llama.cpp/pull/29186) | Add reordered Q8_0 wide-load MMVQ and ESIMD DMMV paths in `ggml-sycl`. | On B70, measured Q8_0 decode gains on Qwythos; merged into upstream master on October 2 and inherited by the October 4 merge. |
 | [#29245](https://github.com/ggml-org/llama.cpp/pull/29245) | Add grouped MoE XMX dequant-GEMM for selected IQ weight types, plus later per-device matrix-shape and type-selection updates. | Group narrow expert GEMMs instead of launching one library GEMM per expert. B70 GSQ-RCO Coder pp8192 rose from about 462 to 764 tok/s with `GGML_SYCL_XMX_GATHER_TYPES=73` (IQ4_NL + IQ3_XXS + IQ2_S). The path uses F16 expert math; this is not a quality-parity claim. |
 | [#29375](https://github.com/ggml-org/llama.cpp/pull/29375) | Add multi-column Q5_K SYCL MMVQ handling in `mmvq.cpp` and `vecdotq.hpp`. | Reduce the measured Q5_K n=4 kernel latency; server-side MTP gains remain unverified. |
 | [#29608](https://github.com/ggml-org/llama.cpp/pull/29608) | Stage model-weight uploads through a reusable pinned-memory ring. | Reduce warm-cache model load wall time; it does not increase steady-state prompt throughput. |
 | [#29338](https://github.com/ggml-org/llama.cpp/pull/29338) | Guard DMMV reads beyond the row tail and add reuse cases to `test-backend-ops`. | Correct an out-of-bounds read on short rows. |
+| [#29696](https://github.com/ggml-org/llama.cpp/pull/29696) | Use wide vector stores and 256-thread workgroups in the SYCL q4_K/q5_K weight-dequant kernels. | Cut dequant cost on the q4_K/q5_K UD quants; pending revalidation on the refreshed B70 host. |
 | [#29357](https://github.com/ggml-org/llama.cpp/pull/29357) | Add Intel Vulkan flash-attention prefill shader and dispatch. | Improve B70 Vulkan prefill by about 25% at pp8192 in the measured models; near-full-context Qwen decode timed out and is not validated. |
-| [#29751](https://github.com/ggml-org/llama.cpp/pull/29751) | Route Qwen4Exp QSA through the shared indexer k-pool, including sequence-order pools and image-position handling. | Correct Qwen3.8 Flash-Next pooled-attention semantics on the newer upstream base. On B70, a single paired GSQ-RCO Coder tg32 check at depth 32768 improved 20.45 to 22.09 tok/s; short-corpus perplexity differences were within control drift. |
+| [#29062](https://github.com/ggml-org/llama.cpp/pull/29062) | Request large register files for the D=512 SYCL flash-attention vec kernels. | Reduce register pressure in deep-head attention; merged into upstream master on October 2 and inherited. |
+| [#28985](https://github.com/ggml-org/llama.cpp/pull/28985) | Never select the slow oneDNN reference matmul and flash-attention paths on SYCL. | Keep oneDNN-enabled builds on fast paths; merged into upstream master on October 2 and inherited. |
+| [#29751](https://github.com/ggml-org/llama.cpp/pull/29751) | Route Qwen4Exp QSA through the shared indexer k-pool, including sequence-order pools and image-position handling. | Correct Qwen3.8 Flash-Next pooled-attention semantics; merged into upstream master on October 1. On B70, a paired GSQ-RCO Coder tg32 check at depth 32768 improved 20.45 to 22.09 tok/s; short-corpus perplexity differences were within control drift. |
 | [#29755](https://github.com/ggml-org/llama.cpp/pull/29755) | Bound grammar parser nesting at 256 levels and test the failure path. | Reject deeply nested client grammars instead of exhausting the server stack; parser test passed on the B70 host. |
+| [#27902](https://github.com/ggml-org/llama.cpp/pull/27902) | Fix Blackwell IQ quant failures in `ggml-cuda/vecdotq.cuh`. | Correct IQ decode on the sm120 CUDA host; pending validation on that host. |
+| [#27140](https://github.com/ggml-org/llama.cpp/pull/27140) | Fix slow CUDA prefill when the KV cache uses small quantized types in `ggml-cuda/convert.cu`. | Targets the fleet-wide q8_0 KV-cache configuration; pending pp512/pp8192 A/B on that host. |
 
-#28918 and #28931 were inherited from upstream master, not cherry-picked
-into the October fork; the other rows are the fork's selected deltas.
+#28918, #28931, #29186, #29062, #28985 and #29751 were inherited from
+upstream master by the October merges; the other rows are the fork's
+selected deltas. The #27902, #27140 and #29696 cherry-picks are pending
+backend validation on their CUDA (sm120) and SYCL (Arc Pro B70) hosts before
+any serving binary changes.
 
 These changes are not a blanket production recommendation. On SYCL,
 `GGML_SYCL_XMX_GATHER_TYPES=0` disables the precision-changing grouped path
