@@ -17,6 +17,43 @@
 
 </div>
 
+## Fork integration: fleet-stable branch
+
+`fleet-stable-20261012` retains upstream `ggml-org/llama.cpp` master
+through its October 13 merge (`1b70350c9`, 32 commits, none touching
+`ggml/src/ggml-sycl`) and carries the deltas below. The upstream merges
+are snapshots, not a claim that this fork will automatically track later
+upstream commits. Only the SYCL changes target the Arc Pro B70 host;
+CUDA and Metal use their own backends from the same source tree.
+
+| Source | Code on this branch (inherited or fork-only) | Reason for inclusion |
+| --- | --- | --- |
+| [#29107](https://github.com/ggml-org/llama.cpp/pull/29107) | Reorder IQ3_S/IQ3_XXS weights and use reordered SYCL mat-vec and dequant paths (merged from the PR branch). | B70 IQ3 decode, measured +58 to +82 percent on IQ3 models against master; validated on the B70 host. |
+| [#29696](https://github.com/ggml-org/llama.cpp/pull/29696) | Wide vector stores and 256-thread workgroups in the SYCL q4_K/q5_K weight-dequant kernels (merged from the PR head). | Cuts dequant staging cost on K-quant weights; validated on the B70 host in this branch's serving measurements. |
+| [#29864](https://github.com/ggml-org/llama.cpp/pull/29864) | Multi-column XMX mat-vec for reordered K-quant and Q8_0 weights (merged from the PR head). | Speculative-decode verification batches; measured +9 to +13 percent decode on Qwen3.8-27B on the B70 host. Deployment note: the branch serves with `GGML_SYCL_XMX_MAX_COLS=8` and `GGML_SYCL_XMX_GLU_MAX_COLS=8`, because the unrestricted wide-batch selection can admit shapes the kernel then declines (review finding); keep those caps until the PR hardens the eligibility gate. |
+| [#27902](https://github.com/ggml-org/llama.cpp/pull/27902) | Fix Blackwell IQ quant failures in `ggml-cuda/vecdotq.cuh` (cherry-pick `d7749c08c`; closed unmerged upstream - the defect is a CUDA 13.2 codegen bug, not a code bug). | Corrects IQ decode on the sm120 CUDA host; pending validation on that host. |
+| [#27140](https://github.com/ggml-org/llama.cpp/pull/27140) | Fix slow CUDA prefill when the KV cache uses small quantized types (cherry-pick `351d5d982`). | Targets q8_0-and-smaller KV configurations; pending validation on the sm120 CUDA host. |
+| [#29755](https://github.com/ggml-org/llama.cpp/pull/29755) | Bound grammar parser nesting at 256 levels and test the failure path (cherry-pick `b61c56fef`). | Rejects deeply nested client grammars instead of exhausting the server stack; validated in production serving on the B70 host. |
+| qwen4exp kpool allocation (13-line patch, held in the machine-config repo) | Expand all eight `build_inp_kpool` graph inputs so the allocator always assigns them a buffer. | Robustness for MTP-attached loads with variant draft heads; validated in production serving on the B70 host. |
+| [#30374](https://github.com/ggml-org/llama.cpp/pull/30374) | Coalesced dequant of reordered Q4_0/Q8_0 weights for prompt processing (cherry-picks of the PR head `069347263`; supersedes the half-precision helper variant with float math). | Restores post-decode prompt throughput on Q4_0/Q8_0 models; earlier head measured +75 percent pp512 after first decode on a B70 Q8_0 model; the float-math rework of the current head is pending revalidation on the B70 host. |
+
+Inherited via the October 13 upstream merge (not fork deltas):
+#30397 (Qwen3.8 Flash-Next MTP image embeddings) and #30331 (laguna
+YaRN beta metadata), among the 32 commits. The qwen4exp kpool patch
+above applies cleanly on top of the merged tree (verified).
+
+Watchlist (open, not carried): #30430 (get_rows on reordered weights -
+correctness fix adjacent to the reorder paths this branch uses; trigger
+is rare with llama.cpp's own tied-embedding handling), #30363 (CONV_2D
+non-contiguous input fix), #30239 (ESIMD FFN restore, draft).
+
+These changes are not a blanket production recommendation. On SYCL,
+`GGML_SYCL_XMX_GATHER_TYPES=0` disables the precision-changing grouped
+path for a control or quality-sensitive deployment. Validate model output
+and memory headroom before changing a serving binary; the combined tree
+is qualified on the Arc Pro B70 host by the measurements above and has
+not been qualified on CUDA or Metal by them.
+
 ## Quick start
 
 A few options to get `llama.cpp` installed on your machine:
