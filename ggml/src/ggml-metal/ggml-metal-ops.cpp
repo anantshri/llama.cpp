@@ -3103,7 +3103,6 @@ int ggml_metal_op_mul_mat_id(ggml_metal_op_t ctx, int idx) {
 
             ggml_metal_encoder_set_pipeline(enc, pipeline);
             ggml_metal_encoder_set_bytes   (enc, &args, sizeof(args), 0);
-<<<<<<< HEAD
             ggml_metal_encoder_set_buffer  (enc, bid_src2, 1);
             ggml_metal_encoder_set_buffer  (enc, bid_tpe,  2);
             ggml_metal_encoder_set_buffer  (enc, bid_ids,  3);
@@ -3112,7 +3111,6 @@ int ggml_metal_op_mul_mat_id(ggml_metal_op_t ctx, int idx) {
 
             ggml_metal_encoder_dispatch_threadgroups(enc, 1, 1, 1, ne02, 1, 1);
         }
-=======
             ggml_metal_encoder_set_buffer  (enc, bid_src1, 1);
             ggml_metal_encoder_set_buffer  (enc, bid_amax, 2);
 
@@ -3123,7 +3121,6 @@ int ggml_metal_op_mul_mat_id(ggml_metal_op_t ctx, int idx) {
 
 <<<<<<< HEAD
         ggml_metal_op_mul_mat_id_map0(ctx, op, bid_tpe, bid_ids);
->>>>>>> c82eed867 (metal : few-row MMA kernels for MUL_MAT_ID)
 =======
         {
             ggml_metal_op_mul_mat_id_map0(ctx, op, bid_tpe, bid_ids);
@@ -4386,6 +4383,22 @@ int ggml_metal_op_flash_attn_ext(ggml_metal_op_t ctx, int idx) {
             nqptg = cfg.Q;  // = 1
         }
 
+        // gqa-bundled decode (opt-in, GGML_METAL_FA_VEC_GQA=1): one threadgroup
+        // per KV head, the NSG simdgroups are the query heads of the group and
+        // share one KV sweep, so the KV cache is read once per KV head instead
+        // of once per query head
+        bool use_gqa = false;
+        if (!use_sparse && nqptg == 1 && ne01 == 1 && ne02 > ne12 && ne02 % ne12 == 0) {
+            const char * gqa_env = getenv("GGML_METAL_FA_VEC_GQA");
+            const int32_t g = ne02 / ne12;
+            if (gqa_env && gqa_env[0] == '1' && gqa_env[1] == 0 &&
+                    g >= 2 && g <= 8 && fa_vec_smem(g, nqptg) <= props_dev->max_theadgroup_memory_size) {
+                nsg = g;
+                nwg = 32;
+                use_gqa = true;
+            }
+        }
+
         const int32_t ns10 = nb11_attn/nb10_attn;
         const int32_t ns20 = nb21_attn/nb20_attn;
 
@@ -4425,7 +4438,11 @@ int ggml_metal_op_flash_attn_ext(ggml_metal_op_t ctx, int idx) {
             /*.n_kv_max_padded =*/ n_kv_max_padded,
         };
 
+<<<<<<< HEAD
         auto pipeline = ggml_metal_library_get_pipeline_flash_attn_ext_vec(lib, op, has_mask, has_sinks, has_bias, has_scap, has_kvpad, use_sparse, has_rows, nqptg, cfg.NE, nsg, nwg, use_kv_f16, ns10, ns20);
+=======
+        auto pipeline = ggml_metal_library_get_pipeline_flash_attn_ext_vec(lib, op, has_mask, has_sinks, has_bias, has_scap, has_kvpad, use_sparse, nqptg, cfg.NE, nsg, nwg, use_kv_f16, ns10, ns20, use_gqa);
+>>>>>>> 72c831a43 (metal : bundle GQA query heads in fa_vec decode kernel)
 
         GGML_ASSERT(nsg*32 <= ggml_metal_pipeline_max_theads_per_threadgroup(pipeline));
 
@@ -4449,7 +4466,7 @@ int ggml_metal_op_flash_attn_ext(ggml_metal_op_t ctx, int idx) {
 
             ggml_metal_encoder_set_threadgroup_memory_size(enc, smem, 0);
 
-            ggml_metal_encoder_dispatch_threadgroups(enc, (ne01 + nqptg - 1)/nqptg, (ne02 + nhptg - 1)/nhptg, ne03*nwg, 32, nsg, 1);
+            ggml_metal_encoder_dispatch_threadgroups(enc, (ne01 + nqptg - 1)/nqptg, use_gqa ? ne12 : (ne02 + nhptg - 1)/nhptg, ne03*nwg, 32, nsg, 1);
         } else {
             // sanity checks
             assert(ggml_metal_op_flash_attn_ext_extra_tmp(op) != 0);
@@ -4462,7 +4479,7 @@ int ggml_metal_op_flash_attn_ext(ggml_metal_op_t ctx, int idx) {
             ggml_metal_encoder_set_buffer(enc, bid_tmp, 7);
 
             ggml_metal_encoder_set_threadgroup_memory_size(enc, smem, 0);
-            ggml_metal_encoder_dispatch_threadgroups(enc, (ne01 + nqptg - 1)/nqptg, (ne02 + nhptg - 1)/nhptg, ne03*nwg, 32, nsg, 1);
+            ggml_metal_encoder_dispatch_threadgroups(enc, (ne01 + nqptg - 1)/nqptg, use_gqa ? ne12 : (ne02 + nhptg - 1)/nhptg, ne03*nwg, 32, nsg, 1);
 
             // sync the 2 kernels
             ggml_metal_op_concurrency_reset(ctx);
