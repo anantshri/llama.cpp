@@ -1,3 +1,40 @@
+# fleet-stable-20261020 - private fleet candidate
+
+This is a private deployment branch, not stock llama.cpp or an upstream PR branch. It carries the 20261019 fleet feature set onto a new upstream pin and adds PR #30775. Publication does not by itself promote any host.
+
+- Upstream base: `6fa4f6cd3ef4b65188acb251d5ef37f8300719a3`.
+- Previous fleet: `3cbc29c323782f6c7750a7478bc51a3df82ae205`.
+- Runbook: `machine-config/dumbo/patches/FLEET-STABLE-BRANCH-20261020.md`.
+- Code tree before this manifest: `0806a88e3306f89d56ae21e3e88c7d30ebe45d01`.
+- Final replay tree and signing verification live in the runbook; this file cannot contain its own final tree hash.
+
+## Carry manifest
+
+| Carry | Source from the previous signed fleet | Purpose |
+|---|---|---|
+| #30430 | `ba03417a8` | Reordered quantized-weight get_rows correctness |
+| #30604 | `0804f4c82` | IQ3 fused-GEMM/reorder correctness, including the prior #30430 resolution |
+| #29864 | `5446ff620` | SYCL XMX multicolumn MMVQ and gate/up fusion |
+| #30728 | `0326944fa` | Opt-in Metal GQA vector decode |
+| #27902 carry | `b5933edf7` | sm_120 packed IQ loads |
+| Small-KV prefill carry | `414a731cb` | Small quantized-KV prefill performance |
+| #29495 carry | `56c3496fb` | Grammar recursion bound |
+| #30573 | upstream `99db719bd` | CUDA FA vector KQ synchronization; already in the new base, not replayed |
+| #30699 | `725af608b` | Metal MoE kernel variant for nine experts/token |
+| Fleet kpool fix | `ac38f7c20` | Allocate qwen4exp kpool graph inputs |
+| #30761 | `6df729b0e` | SYCL permuted/batched quantized-KV attention strides |
+| #29948 including #30489 | `fec72469d` | CUDA MMQ GLU fusion; replay preserves upstream #30553's Stream-K work cap |
+| #28439 and 69 M4 Max rows | `030c168c4` | Metal wide prefill tiles and the existing fleet tuning rows |
+| #30775 | `4875ad7c7` | Four-wide reordered Q8_0 dequantization; fleet primed prefill measured +2.6-3.1% |
+
+## Signing and validation
+
+Every new commit after the upstream pin must be signed by the fleet owner's existing signing identity. Replay uses linear signed cherry-picks of the previous fleet's mainline changes, not merges that import unsigned PR history. Upstream history is retained unchanged.
+
+No serving symlink, provisioning pin, service or model configuration changes merely because this branch exists. Backend validation is host-specific; consult the runbook before promotion. Earlier #30775 measurements are recorded in `machine-config/dumbo/PR30775-COMPARISON.md`; they do not substitute for validation of this rebased candidate.
+
+---
+
 # llama.cpp
 
 ![llama](https://raw.githubusercontent.com/ggml-org/llama.brand/refs/heads/master/cover/llama-cpp/cover-llama-cpp-dark.svg)
