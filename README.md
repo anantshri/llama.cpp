@@ -1,3 +1,65 @@
+# fleet-stable-20261019 — private fleet deploy branch
+
+> **This is NOT a stock llama.cpp checkout and NOT a PR branch.** It is a
+> purpose-built "frankenstein" deploy branch for a private 3-host inference
+> fleet (CUDA sm_120 / SYCL Arc B70 / Metal M4 Max): one upstream master pin
+> plus validated open PRs plus our own fixes, assembled 2026-10-19.
+> Nothing here is ever PR'd upstream — upstream work happens on clean
+> single-topic branches. Upstream's README continues below the divider.
+
+- **Base pin**: upstream master `ff5a23376725e5a889fa0bfb987b7541dc304da0` (2026-10-18)
+- **Authoritative runbook** (assembly recipe, per-host gates, replay
+  commands, rollback): the `machine-config` repo,
+  `dumbo/patches/FLEET-STABLE-BRANCH-20261019.md` — this README is a
+  manifest, the runbook is the source of truth.
+- **Replay gate**: after any rebuild of this branch,
+  `git rev-parse HEAD^{tree}` must equal the stage tree below. If it
+  doesn't, stop — something diverged.
+
+## Carry manifest (in assembly order)
+
+| # | source | what it buys |
+|---|---|---|
+| 1 | PR #30430 @ `5c8d9faee` | fix get_rows on reordered quantized weights (NaN on tied-embedding Q8_0; 7/7 types failed on master) |
+| 2 | PR #30604 (ours) @ `be1626136` | SYCL IQ3 fused-GEMM decode fix — resolves #30430 conflicts by hand (exported patch in machine-config) |
+| 3 | PR #29864 @ `9ac7826ee` | SYCL XMX multicol MMVQ rework (+fused gate/up; cap8 XMX exports) |
+| 4 | PR #30728 (ours) @ `d8cf48afc` | Metal GQA vec decode fast path (env-gated `GGML_METAL_FA_VEC_GQA`; +22–48% decode @100k) |
+| 5–7 | cherry-picks `d7749c08c` `351d5d982` `b61c56fef` (ours, ex `sycl-b70-combined-20261001`) | sm_120 packed-IQ load fix (#27902, load-bearing), slow-prefill-on-small-KV-quants (#27140), grammar recursion limit (#29495) |
+| 8 | cherry-pick PR #30573 @ `9ece86a6c7` | CUDA FA-vec WAR hazard (`__syncwarp`, silent-corruption class) |
+| 9 | cherry-pick PR #30699 @ `24be75ecc` | Metal `mul_mm_id_map0<9>` — Bolt (9 experts/token) segfault fix |
+| 10 | fleet patch (`patches-upstream/0001-qwen4exp-…kpool.patch`) | qwen4exp MTP kpool abort fix — drop when upstream #30592 merges |
+| 11 | PR #30761 @ `eb41b38e7` (Append 1) | SYCL FA permuted/batched quantized-KV dequant — was silently wrong at 2 legal shapes on the prior binary |
+| 12 | PR #29948 @ `b6e0f0334` incl. #30489 (Append 1) | CUDA MMQ GLU fusion (+1.31% pp16384 @ prod ubatch on dense Q8_0) |
+| 13 | PR #28439 @ `b2d0d2e2b` + 69 M4 Max rows (Append 2) | Metal wide prefill tile, per-device tuned; conflicts with base resolved by hand; rows from the PR's own tuner |
+
+Skipped after measurement (do not re-add without new data): #30775 (flat on
+our SYCL stack), #30776 (flat +0.06%), #30226/#30156/#30047/#30645/#30680
+(see runbook audit table).
+
+## Stage identity
+
+| stage | HEAD | tree sha (replay gate) |
+|---|---|---|
+| core (2026-10-19, deployed dumbo+bigdumbo) | `ac38f7c20ec5303a655b229351ed7bfce450cebf` | `f1b9413e6c1b797990b13973f47ca19bc9d9ff7f` |
+| + Append 1 | `c55d540f770a0f67e691c0797f817dbe4c859ecc` | `6b49dbdfd17ef196ce17caf645e48bf265bbb5b6` |
+| + Append 2 (Metal, pre-README) | `182304f45…` | `38ccc77a3b3e174cae3586c6e82ea3f6e60bb6ec` |
+
+Branch tip identity (including this README commit) lives in the runbook
+§Identity — a file cannot embed its own commit's hash.
+
+## Ground rules
+
+- Every carry was gated on the host it affects before append (correctness
+  sweeps + PPL parity + perf A/B); gate data lives in the machine-config
+  repo (`logs/2026-10-19-phase1b-openpr-validation.md` + per-host logs).
+- The two hand-resolved merges (#30604×#30430, #28439×base) are exported as
+  patches in `machine-config/dumbo/patches/` — apply those rather than
+  re-deriving.
+- Rollback on any fleet host = repoint the served binary symlink to the
+  prior tree (per-host paths in the runbook).
+
+---
+
 # llama.cpp
 
 ![llama](https://raw.githubusercontent.com/ggml-org/llama.brand/refs/heads/master/cover/llama-cpp/cover-llama-cpp-dark.svg)
