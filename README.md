@@ -132,3 +132,11 @@ The `llama.cpp` project is build on top of the [ggml](https://github.com/ggml-or
 - [nlohmann/json](https://github.com/nlohmann/json) - Single-header JSON library, used by various tools/examples - MIT License
 - [mackron/miniaudio](https://github.com/mackron/miniaudio) - Single-header audio format decoder, used by multimodal subsystem - Public domain
 - [sheredom/subprocess.h](https://github.com/sheredom/subprocess.h) - Single-header process launching solution for C and C++ - Public domain
+
+## Fleet patch: SYCL reordered Q4_0 conversion widening
+
+Widens the reordered-Q4_0 dequant conversion: flat launch, four qs bytes per
+work-item, two vector stores; identical math, bit-identical output.
+Fleet (Arc Pro B70): +6.4-7.1% primed prefill on Q4_0 models (27B: 886 -> 949
+t/s pp512; 4B: 5165 -> 5497 t/s); fresh-layout prefill and decode unchanged;
+PPL within run noise; q4_0 MUL_MAT gates 111/111.

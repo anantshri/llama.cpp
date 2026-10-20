@@ -838,6 +838,36 @@ static void dequantize_block_q4_0_reorder(const void * __restrict__ vx, dst_t * 
     }
 }
 
+// four qs bytes per item, all inside one 32-element block: two vec<dst_t,4> stores.
+// float math, same products as the scalar kernel; nibble order kept (lo at +0, hi at +16).
+template<typename dst_t>
+static void dequantize_block_q4_0_reorder_wide(const void * __restrict__ vx, dst_t * __restrict__ yy, int64_t k,
+                                               const sycl::id<1> idx) {
+    const int64_t i   = (int64_t) idx[0];
+    const int64_t ib  = i / 4;
+    const int64_t iqs = 4 * (i % 4);
+
+    const uint8_t *    qs    = (const uint8_t *) vx;
+    const sycl::half * d_ptr = (const sycl::half *) ((const uint8_t *) vx + k/2);
+
+    const float d = float(d_ptr[ib]);
+    const uint8_t * q = qs + ib*(QK4_0/2) + iqs;
+
+    sycl::vec<float, 4> lo, hi;
+    lo[0] = d * ((q[0] & 0xF) - 8);
+    lo[1] = d * ((q[1] & 0xF) - 8);
+    lo[2] = d * ((q[2] & 0xF) - 8);
+    lo[3] = d * ((q[3] & 0xF) - 8);
+    hi[0] = d * ((q[0] >>  4) - 8);
+    hi[1] = d * ((q[1] >>  4) - 8);
+    hi[2] = d * ((q[2] >>  4) - 8);
+    hi[3] = d * ((q[3] >>  4) - 8);
+
+    dst_t * yb = yy + ib*QK4_0 + iqs;
+    *reinterpret_cast<sycl::vec<dst_t, 4> *>(yb)           = lo.convert<dst_t, sycl::rounding_mode::automatic>();
+    *reinterpret_cast<sycl::vec<dst_t, 4> *>(yb + QK4_0/2) = hi.convert<dst_t, sycl::rounding_mode::automatic>();
+}
+
 // Dequantize Q8_0 from reorder layout: [all qs (k bytes)][all d values]
 template<typename dst_t>
 static void dequantize_block_q8_0_reorder(const void * __restrict__ vx, dst_t * __restrict__ yy, int64_t k,
