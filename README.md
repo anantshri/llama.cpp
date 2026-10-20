@@ -1,3 +1,54 @@
+# fleet-stable-20261021 - rolling fleet branch
+
+> **Private fleet deploy branch.** Not stock llama.cpp, not an upstream PR
+> branch. Rebase of `fleet-stable-20261020` onto upstream master, plus the
+> measured SYCL conversion-widening patches from `extending-30775`.
+
+- **Upstream base**: 84e66d032 (pinned at validation 2026-10-20/21; re-pin at
+  execution if master moved)
+- **Carries from fleet-stable-20261020**: #30604, #29864, #30728, #27902,
+  small-KV prefill fix, grammar recursion limit, qwen4exp kpool fix, #30761,
+  #29948 (incl. #30489), #28439 + 69 M4 Max rows. #30430 and #30699 dropped
+  (landed upstream).
+- **New**: PR #30775 (Q8_0 reordered conversion widening, +2.4-3.6% primed
+  prefill), reordered Q4_0 conversion widening (+6.4-7.3%), reordered Q4_K
+  vec4 conversion stores (+14.7-18.7% on Q4_K-dominant models). Q5_K left at
+  vec2: the vec4 remap measured within noise and is not included.
+- Full 17-model sweep and per-patch data: machine-config
+  `dumbo/patches/FLEET-STABLE-BRANCH-20261021.md` and
+  `bench-results/pr30775-sweep-20261020/`.
+
+## Full-model sweep: this branch vs upstream master (5ba3b9fd3)
+
+Single round per arm (5 reps/test, arms alternated per model), primed protocol
+(-fa 1 -p 1,512,2048 -n 128 -r 5 -b 2048 -ub 512 -t 6, full GPU offload, F16 KV),
+Intel Arc Pro B70. Primed prefill delta = this branch vs upstream master:
+
+| Model | Quant mix | pp512 | pp2048 | tg128 |
+|---|---|---:|---:|---:|
+| Qwen3-4B | Q4_0 | +6.39% | +6.44% | -0.04% |
+| Qwen3-4B | Q8_0 | +2.35% | +2.46% | -0.01% |
+| Spark-X2.5-4B-Uncensored | Q8_0 | +2.45% | +2.60% | -0.02% |
+| Spark-X2.5-4B | F16 (unquantized control) | -0.02% | -0.10% | -0.00% |
+| Qwythos-9B | Q8_0 | +2.71% | +3.08% | +0.03% |
+| BTL-4-Compact | IQ2_XXS (MoE) | +2.15% | +1.91% | +0.00% |
+| OrcaCyber-Nano-1.0 | IQ4_XS-heavy MoE mix | -0.01% | -0.02% | +0.28% |
+| Qwen3.8-27B | Q4_0 | +7.13% | +7.29% | -0.02% |
+| Qwen3.8-27B-Uncensored | Q4_K_M | +18.34% | +18.74% | +0.03% |
+| GLM-4.7-Flash | UD-Q4_K_XL (MoE) | +0.91% | +0.81% | -0.03% |
+| Qwen3.6-27B-MTP | UD-Q4_K_XL | +14.72% | +15.21% | -0.01% |
+| Qwen3.8-27B | UD-Q4_K_XL (q5_K-heavy) | -0.04% | -0.15% | +0.01% |
+| Swift-Qwen3.8-27B | Q4_K_M | +14.69% | +15.34% | +0.04% |
+| Thomson-1.0-Small | Q4_K_M | +1.71% | +2.04% | +0.20% |
+| Qwen3.8-27B-OBLITERATED | Q6_K | +0.30% | +0.11% | +0.01% |
+| gemma-4-26B-A4B | UD-Q6_K_XL (MoE) | +0.31% | +0.61% | -0.01% |
+| Qwen3.8-27B | Q8_0 | +3.44% | +3.58% | +0.01% |
+
+Pattern: gains track the quant mix. PPL parity on all models. Skipped for
+VRAM: Ornith-1.5-35B (37.8 GB), Laguna-S-2.1 (68/96 GB).
+
+---
+
 # llama.cpp
 
 ![llama](https://raw.githubusercontent.com/ggml-org/llama.brand/refs/heads/master/cover/llama-cpp/cover-llama-cpp-dark.svg)
