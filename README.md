@@ -143,8 +143,11 @@ PPL within run noise; q4_0 MUL_MAT gates 111/111.
 
 ## Fleet patch: SYCL reordered Q4_K/Q5_K conversion store widening
 
-Vectorizes the reordered-Q4_K/Q5_K dequant conversion stores (vec4 for Q4_K,
-vec2 for Q5_K; same per-element math, bit-identical output).
-Fleet (Arc Pro B70): primed prefill uplift on Q4_K/Q5_K models measured on
-Qwen3.8-27B-UD-Q4_K_XL and Swift-Qwen3.8-27B-Q4_K_M - numbers recorded in
-bench-results/pr30775-q4proto-20261020.
+Vectorizes the reordered-Q4_K/Q5_K dequant conversion stores: Q4_K vec4,
+Q5_K remapped to 32 threads/block with vec loads and vec4 stores; same
+per-element math, bit-identical output.
+Fleet (Arc Pro B70): primed prefill +14.7/+15.4% on Q4_K-dominant models
+(Swift-Qwen3.8-27B-Q4_K_M); +2.9/+3.2% on the q5_K-heavy UD-Q4_K_XL tier;
+decode unchanged; PPL within run noise; gates q4_K 113/113, q5_K 85/85,
+q6_K 62/62, GET_ROWS 216/216.
+
