@@ -136,18 +136,51 @@ The `llama.cpp` project is build on top of the [ggml](https://github.com/ggml-or
 ## Fleet patch: SYCL reordered Q4_0 conversion widening
 
 Widens the reordered-Q4_0 dequant conversion: flat launch, four qs bytes per
-work-item, two vector stores; identical math, bit-identical output.
-Fleet (Arc Pro B70): +6.4-7.1% primed prefill on Q4_0 models (27B: 886 -> 949
-t/s pp512; 4B: 5165 -> 5497 t/s); fresh-layout prefill and decode unchanged;
+work-item, two vector stores; identical math per element.
+Fleet (Arc Pro B70): +6.4-7.3% primed prefill on Q4_0 models (27B: 886 -> 948
+t/s pp512; 4B: 5165 -> 5514 t/s); fresh-layout prefill and decode unchanged;
 PPL within run noise; q4_0 MUL_MAT gates 111/111.
 
-## Fleet patch: SYCL reordered Q4_K/Q5_K conversion store widening
+## Fleet patch: SYCL reordered Q4_K conversion store widening
 
-Vectorizes the reordered-Q4_K/Q5_K dequant conversion stores: Q4_K vec4,
-Q5_K remapped to 32 threads/block with vec loads and vec4 stores; same
-per-element math, bit-identical output.
-Fleet (Arc Pro B70): primed prefill +14.7/+15.4% on Q4_K-dominant models
-(Swift-Qwen3.8-27B-Q4_K_M); +2.9/+3.2% on the q5_K-heavy UD-Q4_K_XL tier;
-decode unchanged; PPL within run noise; gates q4_K 113/113, q5_K 85/85,
-q6_K 62/62, GET_ROWS 216/216.
+Vectorizes the reordered-Q4_K dequant conversion stores (vec4 per thread;
+same per-element math). Q5_K keeps its existing vec2 stores: remapping it to
+vec4 measured within noise on current master and is intentionally not
+included.
+Fleet (Arc Pro B70): primed prefill +14.7/+15.3% (Swift-Qwen3.8-27B-Q4_K_M),
++14.7/+15.2% (Qwen3.6-27B-UD-Q4_K_XL), +18.3/+18.7%
+(Qwen3.8-27B-Uncensored-Q4_K_M); no measurable change on the q5_K-heavy
+UD-Q4_K_XL tier; decode unchanged; PPL within run noise; gates q4_K 113/113,
+q5_K 85/85, q6_K 62/62, GET_ROWS 216/216.
 
+
+## Full-model sweep: extending-30775 vs upstream master (5ba3b9fd3)
+
+Single round per arm (5 reps/test, arms alternated per model), primed protocol
+(-fa 1 -p 1,512,2048 -n 128 -r 5 -b 2048 -ub 512 -t 6, full GPU offload, F16 KV),
+Intel Arc Pro B70. Primed prefill delta = this branch vs upstream master:
+
+| Model | Quant mix | pp512 | pp2048 | tg128 |
+|---|---|---:|---:|---:|
+| Qwen3-4B | Q4_0 | +6.39% | +6.44% | -0.04% |
+| Qwen3-4B | Q8_0 | +2.35% | +2.46% | -0.01% |
+| Spark-X2.5-4B-Uncensored | Q8_0 | +2.45% | +2.60% | -0.02% |
+| Spark-X2.5-4B | F16 (unquantized control) | -0.02% | -0.10% | -0.00% |
+| Qwythos-9B | Q8_0 | +2.71% | +3.08% | +0.03% |
+| BTL-4-Compact | IQ2_XXS (MoE) | +2.15% | +1.91% | +0.00% |
+| OrcaCyber-Nano-1.0 | IQ4_XS-heavy MoE mix | -0.01% | -0.02% | +0.28% |
+| Qwen3.8-27B | Q4_0 | +7.13% | +7.29% | -0.02% |
+| Qwen3.8-27B-Uncensored | Q4_K_M | +18.34% | +18.74% | +0.03% |
+| GLM-4.7-Flash | UD-Q4_K_XL (MoE) | +0.91% | +0.81% | -0.03% |
+| Qwen3.6-27B-MTP | UD-Q4_K_XL | +14.72% | +15.21% | -0.01% |
+| Qwen3.8-27B | UD-Q4_K_XL (q5_K-heavy) | -0.04% | -0.15% | +0.01% |
+| Swift-Qwen3.8-27B | Q4_K_M | +14.69% | +15.34% | +0.04% |
+| Thomson-1.0-Small | Q4_K_M | +1.71% | +2.04% | +0.20% |
+| Qwen3.8-27B-OBLITERATED | Q6_K | +0.30% | +0.11% | +0.01% |
+| gemma-4-26B-A4B | UD-Q6_K_XL (MoE) | +0.31% | +0.61% | -0.01% |
+| Qwen3.8-27B | Q8_0 | +3.44% | +3.58% | +0.01% |
+
+Pattern: gains track the quant mix — q4_K-dominant +14.7..+18.7%, Q4_0
++6.4..+7.3%, Q8_0 +2.4..+3.6%, mixed/IQ tiers +0.8..+2.2%; unquantized and
+untouched-quant controls are flat; decode unchanged everywhere; PPL parity on
+all models. Skipped for VRAM: Ornith-1.5-35B (37.8 GB), Laguna-S-2.1 (68/96 GB).
