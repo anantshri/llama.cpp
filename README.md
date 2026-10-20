@@ -140,3 +140,11 @@ work-item, two vector stores; identical math, bit-identical output.
 Fleet (Arc Pro B70): +6.4-7.1% primed prefill on Q4_0 models (27B: 886 -> 949
 t/s pp512; 4B: 5165 -> 5497 t/s); fresh-layout prefill and decode unchanged;
 PPL within run noise; q4_0 MUL_MAT gates 111/111.
+
+## Fleet patch: SYCL reordered Q4_K/Q5_K conversion store widening
+
+Vectorizes the reordered-Q4_K/Q5_K dequant conversion stores (vec4 for Q4_K,
+vec2 for Q5_K; same per-element math, bit-identical output).
+Fleet (Arc Pro B70): primed prefill uplift on Q4_K/Q5_K models measured on
+Qwen3.8-27B-UD-Q4_K_XL and Swift-Qwen3.8-27B-Q4_K_M - numbers recorded in
+bench-results/pr30775-q4proto-20261020.
