@@ -1203,10 +1203,14 @@ inline void dequantize_q4_K_common(dst_t * __restrict__ y, const uint8_t * __res
     const float m2 = dmin * m;
 
     sycl::vec<uint8_t, n> q_vec = vec_aligned_load<uint8_t, n>(qs_ptr + 32 * il + n * ir);
+
+    sycl::vec<dst_t, n> lo, hi;
     for (int l = 0; l < n; ++l) {
-        y[l + 0]  = d1 * (q_vec[l] & 0xF) - m1;
-        y[l + 32] = d2 * (q_vec[l] >> 4) - m2;
+        lo[l] = d1 * (q_vec[l] & 0xF) - m1;
+        hi[l] = d2 * (q_vec[l] >> 4) - m2;
     }
+    *reinterpret_cast<sycl::vec<dst_t, n> *>(y +  0) = lo;
+    *reinterpret_cast<sycl::vec<dst_t, n> *>(y + 32) = hi;
 }
 
 template <typename dst_t>
@@ -1330,11 +1334,16 @@ static void dequantize_block_q5_K_reorder(const void * __restrict__ vx, dst_t * 
     const float d2 = dall * sc; const float m2 = dmin * m;
 
     uint8_t hm  = 1 << (2 * il);
-    y[ 0] = d1 * ((ql[ 0] & 0xF) + (qh[ 0] & hm ? 16 : 0)) - m1;
-    y[ 1] = d1 * ((ql[ 1] & 0xF) + (qh[ 1] & hm ? 16 : 0)) - m1;
+
+    sycl::vec<dst_t, 2> lo, hi;
+    lo[0] = d1 * ((ql[ 0] & 0xF) + (qh[ 0] & hm ? 16 : 0)) - m1;
+    lo[1] = d1 * ((ql[ 1] & 0xF) + (qh[ 1] & hm ? 16 : 0)) - m1;
     hm <<= 1;
-    y[32] = d2 * ((ql[ 0] >>  4) + (qh[ 0] & hm ? 16 : 0)) - m2;
-    y[33] = d2 * ((ql[ 1] >>  4) + (qh[ 1] & hm ? 16 : 0)) - m2;
+    hi[0] = d2 * ((ql[ 0] >>  4) + (qh[ 0] & hm ? 16 : 0)) - m2;
+    hi[1] = d2 * ((ql[ 1] >>  4) + (qh[ 1] & hm ? 16 : 0)) - m2;
+
+    *reinterpret_cast<sycl::vec<dst_t, 2> *>(y +  0) = lo;
+    *reinterpret_cast<sycl::vec<dst_t, 2> *>(y + 32) = hi;
 #else
     GGML_UNUSED(ib); GGML_UNUSED(tid); GGML_UNUSED(yy); GGML_UNUSED(scales_local); GGML_UNUSED(n_blocks);
     GGML_ABORT("Q5_K reorder dequantize not supported for QK_K != 256");
