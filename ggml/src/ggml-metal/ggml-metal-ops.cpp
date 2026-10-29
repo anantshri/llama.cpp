@@ -829,6 +829,8 @@ int ggml_metal_op_unary(ggml_metal_op_t ctx, int idx) {
     // the sigmoid and sqrt(softplus) TOPK_MOE fusions anchor at the gating unary node
     if (op->op == GGML_OP_UNARY && ctx->use_fusion() &&
         (ggml_get_unary_op(op) == GGML_UNARY_OP_SOFTPLUS || ggml_get_unary_op(op) == GGML_UNARY_OP_SIGMOID)) {
+    // sigmoid MoE routing (sigmoid + bias + top-k + norm + scale)
+    if (ctx->use_fusion() && op->op == GGML_OP_UNARY && ggml_get_unary_op(op) == GGML_UNARY_OP_SIGMOID) {
         int n = 1;
         const ggml_metal_fusion * fusion = ctx->can_fuse(idx, GGML_METAL_FUSION_FULL, &n);
         if (fusion && ggml_metal_fusion_get_id(fusion) == GGML_METAL_FUSION_TOPK_MOE) {
@@ -6592,6 +6594,7 @@ int ggml_metal_op_topk_moe(ggml_metal_op_t ctx, int idx) {
         return 1;
     }
 
+<<<<<<< HEAD
     ggml_tensor * first  = ctx->node(idx);
     ggml_tensor * logits = first->src[0];
 
@@ -6615,20 +6618,48 @@ int ggml_metal_op_topk_moe(ggml_metal_op_t ctx, int idx) {
 
     const bool with_norm  = sum_rows != nullptr;
     const bool with_scale = weights->op == GGML_OP_SCALE;
+=======
+    ggml_tensor * softmax  = ctx->node(idx);
+    ggml_tensor * logits   = softmax->src[0];
+
+    // sigmoid gating: UNARY, ADD(bias), ARGSORT, GET_ROWS, SUM_ROWS, CLAMP, DIV[, SCALE]
+    const bool sigmoid = softmax->op == GGML_OP_UNARY;
+    const int  off     = sigmoid ? 1 : 0;
+
+    ggml_tensor * get_rows = ctx->node(idx + 2 + off);
+    ggml_tensor * ids      = get_rows->src[1];
+    ggml_tensor * weights  = ctx->node(idx + n_fuse - 1);
+    ggml_tensor * bias     = nullptr;
+    if (sigmoid) {
+        ggml_tensor * add = ctx->node(idx + 1);
+        bias = add->src[0] == softmax ? add->src[1] : add->src[0];
+    }
+>>>>>>> f3bfd8020 (metal : fuse sigmoid + bias routing in TOPK_MOE)
 
     const int64_t n_expert      = logits->ne[0];
     const int64_t n_tokens      = logits->ne[1];
     const int64_t n_expert_used = ids->ne[0];
 
+<<<<<<< HEAD
+=======
+    const bool with_norm  = sigmoid || n_fuse >= 6;
+    const bool with_scale = sigmoid ? n_fuse == 8 : (n_fuse == 4 || n_fuse == 7);
+
+>>>>>>> f3bfd8020 (metal : fuse sigmoid + bias routing in TOPK_MOE)
     float clamp = -INFINITY;
     float bias  = 0.0f;
     if (with_norm) {
+<<<<<<< HEAD
         ggml_tensor * denom_node = ctx->node(idx + sum_rows_pos + 1);
         if (denom_node->op == GGML_OP_SCALE) {
             bias = ggml_get_op_params_f32(denom_node, 1);
         } else {
             clamp = ggml_get_op_params_f32(denom_node, 0);
         }
+=======
+        ggml_tensor * clamp_node = ctx->node(idx + 4 + off);
+        clamp = ggml_get_op_params_f32(clamp_node, 0);
+>>>>>>> f3bfd8020 (metal : fuse sigmoid + bias routing in TOPK_MOE)
     }
 
     float scale = 1.0f;
@@ -6645,23 +6676,35 @@ int ggml_metal_op_topk_moe(ggml_metal_op_t ctx, int idx) {
         /*.scale =*/ scale,
     };
 
+<<<<<<< HEAD
     auto pipeline = ggml_metal_library_get_pipeline_topk_moe(lib, (int32_t) n_expert, (int32_t) n_expert_used,
             with_norm, gating, prob_bias != nullptr);
+=======
+    auto pipeline = ggml_metal_library_get_pipeline_topk_moe(lib, (int32_t) n_expert, (int32_t) n_expert_used, with_norm, sigmoid);
+>>>>>>> f3bfd8020 (metal : fuse sigmoid + bias routing in TOPK_MOE)
 
     ggml_metal_encoder_set_pipeline(enc, pipeline);
     ggml_metal_encoder_set_bytes   (enc, &args, sizeof(args), 0);
     ggml_metal_encoder_set_buffer  (enc, ggml_metal_get_buffer_id(logits),  1);
     ggml_metal_encoder_set_buffer  (enc, ggml_metal_get_buffer_id(weights), 2);
     ggml_metal_encoder_set_buffer  (enc, ggml_metal_get_buffer_id(ids),     3);
+<<<<<<< HEAD
     ggml_metal_encoder_set_buffer  (enc, ggml_metal_get_buffer_id(prob_bias ? prob_bias : logits), 4);
+=======
+    ggml_metal_encoder_set_buffer  (enc, ggml_metal_get_buffer_id(sigmoid ? bias : logits), 4);
+>>>>>>> f3bfd8020 (metal : fuse sigmoid + bias routing in TOPK_MOE)
 
     ggml_metal_encoder_dispatch_threadgroups(enc, (uint32_t) n_tokens, 1, 1, 32, 1, 1);
 
     ctx->count_fusions(fusion);
 
     if (ggml_metal_fusion_info_debug(ctx->finfo) > 1) {
+<<<<<<< HEAD
         GGML_LOG_DEBUG("%s: fuse: %s + ARGSORT + GET_ROWS\n", __func__,
                 gating == 1 ? "SOFTPLUS + SQRT" : gating == 2 ? "SIGMOID" : "SOFT_MAX");
+=======
+        GGML_LOG_DEBUG("%s: fuse: %s + ARGSORT + GET_ROWS\n", __func__, sigmoid ? "SIGMOID + ADD" : "SOFT_MAX");
+>>>>>>> f3bfd8020 (metal : fuse sigmoid + bias routing in TOPK_MOE)
     }
 
     return n_fuse;
