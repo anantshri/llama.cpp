@@ -3652,6 +3652,7 @@ size_t ggml_metal_op_flash_attn_ext_extra_rows(const ggml_tensor * op) {
 //   GGML_METAL_FA_VEC_GQA=1           enable
 //   GGML_METAL_FA_VEC_GQA_MAXNSG=2..8 cap on query heads per threadgroup (default 8)
 //   GGML_METAL_FA_VEC_GQA_MULTI=1     also for multi-token steps (speculative/MTP verify, parallel slots)
+// note: only used with f16 K/V (see the decision below for why)
 struct gqa_ctl_t { bool on; int32_t cap; bool multi; };
 
 static gqa_ctl_t gqa_ctl_from_env() {
@@ -4365,7 +4366,13 @@ int ggml_metal_op_flash_attn_ext(ggml_metal_op_t ctx, int idx) {
             const gqa_ctl_t ctl = gqa_ctl_get();
             const int32_t g = ne02 / ne12;
             // multi: allow several query rows per step (spec/MTP verify, parallel slots)
-            if (ctl.on && (ctl.multi || (nqptg == 1 && ne01 == 1)) && g >= 2) {
+            // f16 K/V only for now: with quantized K/V each simdgroup dequantizes its
+            // own rows, so sharing the read saves bandwidth the kernel does not need
+            // and bundling only reduces threadgroup parallelism (measured 0.86-1.02x
+            // on M4 Pro across G = 2..8 and kv 4k..128k, see PR discussion). re-visit
+            // when the K/V dequant is shared into threadgroup memory per chunk
+            if (ctl.on && (ctl.multi || (nqptg == 1 && ne01 == 1)) && g >= 2 &&
+                    op->src[1]->type == GGML_TYPE_F16 && op->src[2]->type == GGML_TYPE_F16) {
                 // largest divisor of g <= cap that fits threadgroup memory; a group larger
                 // than that is split over g/nsg threadgroups of the same KV head
                 for (int32_t d = std::min<int32_t>(g, ctl.cap); d >= 2; --d) {
