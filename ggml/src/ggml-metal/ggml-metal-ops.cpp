@@ -2785,7 +2785,6 @@ int ggml_metal_op_mul_mat(ggml_metal_op_t ctx, int idx) {
 
     const int16_t r2 = ne12/ne02;
     const int16_t r3 = ne13/ne03;
-
     // first try to use small-batch mat-mv kernels
     // these should be efficient for BS [2, ~8]
     if (op->src[1]->type == GGML_TYPE_F32 && (ne00%128 == 0) &&
@@ -2796,15 +2795,14 @@ int ggml_metal_op_mul_mat(ggml_metal_op_t ctx, int idx) {
            op->src[0]->type == GGML_TYPE_F16  ||
            op->src[0]->type == GGML_TYPE_BF16 ||
            op->src[0]->type == GGML_TYPE_Q1_0 ||
-           op->src[0]->type == GGML_TYPE_Q2_0 ||
-           op->src[0]->type == GGML_TYPE_Q4_0 ||
+           op->src[0]->type == GGML_TYPE_Q2_0 ||           op->src[0]->type == GGML_TYPE_Q4_0 ||
            op->src[0]->type == GGML_TYPE_Q4_1 ||
            op->src[0]->type == GGML_TYPE_Q5_0 ||
            op->src[0]->type == GGML_TYPE_Q5_1 ||
            op->src[0]->type == GGML_TYPE_Q8_0 ||
            op->src[0]->type == GGML_TYPE_MXFP4 ||
            op->src[0]->type == GGML_TYPE_IQ4_NL ||
-           false) && (ne11 >= 2 && ne11 <= 8)
+           false) && (ne11 >= 2 && ne11 <= 16)
          ) ||
          (
           (
@@ -2813,7 +2811,7 @@ int ggml_metal_op_mul_mat(ggml_metal_op_t ctx, int idx) {
            op->src[0]->type == GGML_TYPE_Q6_K ||
            op->src[0]->type == GGML_TYPE_Q2_K ||
            op->src[0]->type == GGML_TYPE_Q3_K ||
-           false) && (ne11 >= 4 && ne11 <= 8)
+           false) && (ne11 >= 4 && ne11 <= 16)
          )
         )
        ) {
@@ -2854,6 +2852,19 @@ int ggml_metal_op_mul_mat(ggml_metal_op_t ctx, int idx) {
                 r1ptg = 4; break;
             case 5:
                 r1ptg = 5; break;
+            case 9:
+                r1ptg = 3; break;
+            case 10:
+                r1ptg = 5; break;
+            case 11:
+            case 12:
+                r1ptg = 4; break;
+            case 13:
+            case 14:
+            case 15:
+                r1ptg = 5; break;
+            case 16:
+                r1ptg = 4; break;
             default:
                 GGML_ABORT("unsupported ne11");
         };
