@@ -1882,9 +1882,9 @@ static void ggml_mul_mat_q4_0_q8_1_sycl(const void *vx, const void *vy,
                                         const int nrows_y, const int nrows_dst,
                                         dpct::queue_ptr stream, bool reorder = false) try {
 
-    const int mmq_x  =  MMQ_X_Q4_0_XE;
-    const int mmq_y  =  MMQ_Y_Q4_0_XE;
-    const int nwarps = NWARPS_Q4_0_XE;
+    const int mmq_x  =  MMQ_X_Q4_0_AMPERE;
+    const int mmq_y  =  MMQ_Y_Q4_0_AMPERE;
+    const int nwarps = NWARPS_Q4_0_AMPERE;
 
     const int block_num_x = (nrows_x + mmq_y - 1) / mmq_y;
     const int block_num_y = (ncols_y + mmq_x - 1) / mmq_x;
@@ -1950,9 +1950,9 @@ static void ggml_mul_mat_q4_1_q8_1_sycl(const void *vx, const void *vy,
                                         const int nrows_y, const int nrows_dst,
                                         dpct::queue_ptr stream) try {
 
-    const int mmq_x  =  MMQ_X_Q4_1_XE;
-    const int mmq_y  =  MMQ_Y_Q4_1_XE;
-    const int nwarps = NWARPS_Q4_1_XE;
+    const int mmq_x  =  MMQ_X_Q4_1_AMPERE;
+    const int mmq_y  =  MMQ_Y_Q4_1_AMPERE;
+    const int nwarps = NWARPS_Q4_1_AMPERE;
 
     const int block_num_x = (nrows_x + mmq_y - 1) / mmq_y;
     const int block_num_y = (ncols_y + mmq_x - 1) / mmq_x;
@@ -2011,9 +2011,9 @@ static void ggml_mul_mat_q5_0_q8_1_sycl(const void *vx, const void *vy,
                                         const int nrows_y, const int nrows_dst,
                                         dpct::queue_ptr stream) try {
 
-    const int mmq_x  =  MMQ_X_Q5_0_XE;
-    const int mmq_y  =  MMQ_Y_Q5_0_XE;
-    const int nwarps = NWARPS_Q5_0_XE;
+    const int mmq_x  =  MMQ_X_Q5_0_AMPERE;
+    const int mmq_y  =  MMQ_Y_Q5_0_AMPERE;
+    const int nwarps = NWARPS_Q5_0_AMPERE;
 
     const int block_num_x = (nrows_x + mmq_y - 1) / mmq_y;
     const int block_num_y = (ncols_y + mmq_x - 1) / mmq_x;
@@ -2072,9 +2072,9 @@ static void ggml_mul_mat_q5_1_q8_1_sycl(const void *vx, const void *vy,
                                         const int nrows_y, const int nrows_dst,
                                         dpct::queue_ptr stream) try {
 
-    const int mmq_x  =  MMQ_X_Q5_1_XE;
-    const int mmq_y  =  MMQ_Y_Q5_1_XE;
-    const int nwarps = NWARPS_Q5_1_XE;
+    const int mmq_x  =  MMQ_X_Q5_1_AMPERE;
+    const int mmq_y  =  MMQ_Y_Q5_1_AMPERE;
+    const int nwarps = NWARPS_Q5_1_AMPERE;
 
     const int block_num_x = (nrows_x + mmq_y - 1) / mmq_y;
     const int block_num_y = (ncols_y + mmq_x - 1) / mmq_x;
@@ -2133,9 +2133,9 @@ static void ggml_mul_mat_q8_0_q8_1_sycl(const void *vx, const void *vy,
                                         const int nrows_y, const int nrows_dst,
                                         dpct::queue_ptr stream, bool reorder = false) try {
 
-    const int mmq_x  =  MMQ_X_Q8_0_XE;
-    const int mmq_y  =  MMQ_Y_Q8_0_XE;
-    const int nwarps = NWARPS_Q8_0_XE;
+    const int mmq_x  =  MMQ_X_Q8_0_AMPERE;
+    const int mmq_y  =  MMQ_Y_Q8_0_AMPERE;
+    const int nwarps = NWARPS_Q8_0_AMPERE;
 
     const int block_num_x = (nrows_x + mmq_y - 1) / mmq_y;
     const int block_num_y = (ncols_y + mmq_x - 1) / mmq_x;
