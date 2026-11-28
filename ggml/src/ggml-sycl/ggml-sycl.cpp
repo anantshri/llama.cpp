@@ -3428,7 +3428,7 @@ inline void ggml_sycl_op_mul_mat_sycl(
         g_ggml_sycl_enable_dnn && g_ggml_sycl_q4_0_u4_gemm && ggml_sycl_dnnl_has_q4_0_u4_gemm(ggml_sycl_get_device()) &&
         ggml_is_contiguous(src0) && row_low == 0 && row_diff == src0->ne[1] && ldc == row_diff && ne00 % QK4_0 == 0 &&
         ne00 * src0->ne[1] >= GGML_SYCL_Q4_0_U4_GEMM_MIN_WEIGHTS &&
-        dst->op_params[0] == GGML_PREC_DEFAULT) {
+        dst->op_params[0] == GGML_PREC_UNDEFINED) {
         const int nrows = (int) row_diff;
         const int nb    = (int) (ne00 / QK4_0);
         const int K     = (int) ne00;
@@ -5390,7 +5390,7 @@ static bool ggml_sycl_reorder_for_q4_0_u4_gemm(ggml_backend_sycl_context & ctx, 
            src0->type == GGML_TYPE_Q4_0 && ggml_is_contiguous(src0) && src0->ne[0] % QK4_0 == 0 &&
            src0->ne[0] * src0->ne[1] >= GGML_SYCL_Q4_0_U4_GEMM_MIN_WEIGHTS &&
            src1->type == GGML_TYPE_F32 && src1->ne[1] > 32 && src1->ne[2] == 1 && src1->ne[3] == 1 &&
-           ggml_sycl_src1_f16_ok(dst) && dst->op_params[0] == GGML_PREC_DEFAULT;
+           ggml_sycl_src1_f16_ok(dst) && dst->op_params[0] == GGML_PREC_UNDEFINED;
 }
 #endif
 
